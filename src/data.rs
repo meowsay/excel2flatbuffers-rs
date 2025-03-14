@@ -216,6 +216,42 @@ impl RawSheet {
         header_vec
     }
 
+    fn generate_logic_lua_code(&self) -> String {
+        let mut define_code_lines: Vec<String> = Vec::new();
+        for header in self.header.iter() {
+            if !header.is_comment {
+                let code = format!("        define.{0} = data:{0}()", header.name);
+                define_code_lines.push(code);
+            }
+        }
+
+        let define_code_str = define_code_lines.join("\n");
+
+        let table_code_str = format!(
+            "
+local {0} = require \"Game.AutoGenConfig.{0}\"
+
+local {0}TableClass = BaseClass(\"{0}TableClass\", BaseConfigTableClass)
+
+function {0}TableClass:OnLoad(buff)
+    local config = {0}.GetRootAs{0}(buff, 0)
+    for i = 1, config:DataLength() do
+        local data = config:Data(i)
+        local define = {2}
+{1}
+    
+        self:AddToDict(define.ID, define)
+    end
+end
+
+return {0}TableClass
+        ",
+            self.sheet_name, define_code_str, "{}"
+        );
+
+        table_code_str
+    }
+
     pub fn generate_fbs_code(&self) -> String {
         let table_code_str = format!(
             "
@@ -249,7 +285,7 @@ table Single{}Data {{
             self.sheet_name, variables_code
         );
 
-        println!("Namespace: {}", self.namespace);
+        // println!("Namespace: {}", self.namespace);
 
         let single_table_code_str = if self.namespace != "" {
             format!("namespace {};\n{}", self.namespace, single_table_code_str)
@@ -257,7 +293,7 @@ table Single{}Data {{
             single_table_code_str
         };
 
-        println!("single_table_code: \n{}", single_table_code_str);
+        // println!("single_table_code: \n{}", single_table_code_str);
 
         let mut fbs_code = String::new();
         fbs_code.push_str(&single_table_code_str);
@@ -275,7 +311,18 @@ table Single{}Data {{
         let fbs_code = self.generate_fbs_code();
 
         fs::write(output_file, &fbs_code)?;
+        println!("生成：{}", self.sheet_name);
 
+        Ok(())
+    }
+
+    pub fn write_to_logic_lua_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
+        let output_file = format!("{}{}TableClass.lua", output_dir, self.sheet_name);
+        if !Path::new(output_dir).is_dir() {
+            fs::create_dir(output_dir)?;
+        }
+        let code = self.generate_logic_lua_code();
+        fs::write(output_file, &code)?;
         Ok(())
     }
 }
@@ -288,44 +335,44 @@ pub struct RawTable {
 
 impl RawTable {
     pub fn new(excel_path: &str, namespace: &str) -> Option<Self> {
-        if let Some(sheet_vec) = RawTable::read_excel(excel_path, namespace){
-        let path = String::from(excel_path);
-        Some(Self {
-            excel_path: path,
-            sheets: sheet_vec,
-        })
-    }else{
-        None
-    }
+        if let Some(sheet_vec) = RawTable::read_excel(excel_path, namespace) {
+            let path = String::from(excel_path);
+            Some(Self {
+                excel_path: path,
+                sheets: sheet_vec,
+            })
+        } else {
+            None
+        }
     }
 
     fn read_excel(excel_path: &str, namespace: &str) -> Option<Vec<RawSheet>> {
         if let Ok(mut workbook) = open_workbook::<Xlsx<_>, &str>(excel_path) {
-        let sheets = workbook.sheet_names().to_owned();
+            let sheets = workbook.sheet_names().to_owned();
 
-        let mut sheet_vec: Vec<RawSheet> = Vec::new();
+            let mut sheet_vec: Vec<RawSheet> = Vec::new();
 
-        for sheet in sheets {
-            if sheet.contains("【") {
-                continue;
-            }
-            if let Some(Ok(range)) = workbook.worksheet_range(&sheet) {
-                let mut row_vec = Vec::new();
-                for row in range.rows() {
-                    let vec: Vec<String> = row.iter().map(|a| a.to_string()).collect();
-                    row_vec.push(vec);
+            for sheet in sheets {
+                if sheet.contains("【") {
+                    continue;
                 }
-                // let excel_name = String::from(excel_path);
-                sheet_vec.push(RawSheet::new(sheet, row_vec, namespace));
-            } else {
-                eprintln!("Error with sheet: {0}", sheet);
+                if let Some(Ok(range)) = workbook.worksheet_range(&sheet) {
+                    let mut row_vec = Vec::new();
+                    for row in range.rows() {
+                        let vec: Vec<String> = row.iter().map(|a| a.to_string()).collect();
+                        row_vec.push(vec);
+                    }
+                    // let excel_name = String::from(excel_path);
+                    sheet_vec.push(RawSheet::new(sheet, row_vec, namespace));
+                } else {
+                    eprintln!("Error with sheet: {0}", sheet);
+                }
             }
-        }
 
-        Some(sheet_vec)
-    }else{
-        None
-    }
+            Some(sheet_vec)
+        } else {
+            None
+        }
     }
 
     pub fn write_to_fbs_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
@@ -335,6 +382,42 @@ impl RawTable {
 
         Ok(())
     }
+
+    pub fn write_to_logic_lua_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
+        for sheet in self.sheets.iter() {
+            sheet.write_to_logic_lua_file(output_dir)?;
+        }
+
+        Ok(())
+    }
+
+    //     pub fn write_to_logic_lua_mod_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
+    //         let mut line_vec: Vec<String> = Vec::new();
+
+    //         for sheet in self.sheets.iter() {
+    //             let sheet_name = sheet.sheet_name.clone();
+    //             let code_str = format!(
+    //                 "
+    // local {0}TableClass = require \"Game.ConfigTables.{0}TableClass\"
+    // {0}Table = {0}TableClass.New(\"ConfigBytes/{0}\")
+    // ConfigTableST:GetInstance():AddTable({0}Table)
+
+    //             ",
+    //                 sheet_name
+    //             );
+    //             line_vec.push(code_str);
+    //         }
+
+    //         let code = line_vec.join("\n");
+
+    //         let output_file = format!("{}Mod.lua", output_dir);
+    //         if !Path::new(output_dir).is_dir() {
+    //             fs::create_dir(output_dir)?;
+    //         }
+    //         fs::write(output_file, &code)?;
+
+    //         Ok(())
+    //     }
 
     pub fn pack_data(
         &self,

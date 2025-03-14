@@ -1,15 +1,15 @@
-/// 从 fbs 文件生成目标代码
-/// 
-use std::path::Path;
-use std::fs;
 use crate::file_filter;
+use std::fs;
+/// 从 fbs 文件生成目标代码
+///
+use std::path::Path;
 extern crate flatc_rust;
 
 fn _generate(output_path: &str, path_array: &[&Path], lang: &str) -> Result<(), std::io::Error> {
-    println!("Gen Code: {}", output_path);
+    // println!("Gen Code: {}", output_path);
     flatc_rust::run(flatc_rust::Args {
-        lang,  // `rust` is the default, but let's be explicit
-        inputs: path_array,// &[Path::new("./flatbuffers/monster.fbs")],
+        lang,               // `rust` is the default, but let's be explicit
+        inputs: path_array, // &[Path::new("./flatbuffers/monster.fbs")],
         out_dir: Path::new(output_path),
         ..Default::default()
     })?;
@@ -32,7 +32,7 @@ pub fn generate(fbs_dir: &str, output_dir: &str, lang: &str) -> Result<(), std::
 
     let path_array = &path_vec[..];
 
-   _generate(output_dir, path_array, lang)?;
+    _generate(output_dir, path_array, lang)?;
 
     Ok(())
 }

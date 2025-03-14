@@ -2,12 +2,12 @@ use std::time::Instant;
 // use excel2flatbuffers_rs::UnlockLvConfig_generated;
 // use excel2flatbuffers_rs::file_filter;
 // use std::path::PathBuf;
-use excel2flatbuffers_rs::data::RawTable;
-use excel2flatbuffers_rs::file_filter;
+use excel2flatbuffers_code_rs::data::RawTable;
+use excel2flatbuffers_code_rs::file_filter;
 // use std::io;
 // use std::io::prelude::*;
 // use std::fs::File;
-use excel2flatbuffers_rs::fbs2code;
+use excel2flatbuffers_code_rs::fbs2code;
 
 extern crate flatbuffers;
 use std::fs;
@@ -63,6 +63,13 @@ fn main() -> Result<(), std::io::Error> {
                 .value_name("namespace")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("luacode")
+                .short("luacode")
+                .long("luacode")
+                .value_name("luacode")
+                .takes_value(true),
+        )
         .get_matches();
 
     // Gets a value for config if supplied by user, or defaults to "default.conf"
@@ -72,6 +79,7 @@ fn main() -> Result<(), std::io::Error> {
     let bytes_dir = matches.value_of("bytes").unwrap_or(""); // "./common/data_output/"
     let excel_dir = matches.value_of("excel").unwrap_or(""); // "./common/excels/"
     let lang_code_dir = matches.value_of("code").unwrap_or(""); // "./common/csharp_output/"
+    let lua_code_dir = matches.value_of("luacode").unwrap_or("");
 
     // Create Directories
     if fbs_dir != "" {
@@ -86,8 +94,12 @@ fn main() -> Result<(), std::io::Error> {
         fs::create_dir_all(lang_code_dir)?;
     }
 
+    if lua_code_dir != "" {
+        fs::create_dir_all(lua_code_dir)?;
+    }
+
     if excel_dir != "" && fbs_dir != "" && bytes_dir != "" && lang_code_dir != "" {
-        process_excel_and_fbs_things(excel_dir, fbs_dir, bytes_dir, namespace);
+        process_excel_and_fbs_things(excel_dir, fbs_dir, bytes_dir, namespace, lua_code_dir);
     }
 
     let now = Instant::now();
@@ -102,31 +114,71 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn process_excel_and_fbs_things(excel_dir: &str, fbs_dir: &str, bytes_dir: &str, namespace: &str) {
+fn process_excel_and_fbs_things(
+    excel_dir: &str,
+    fbs_dir: &str,
+    bytes_dir: &str,
+    namespace: &str,
+    lua_code_dir: &str,
+) {
     let file_identifier = Some("WHAT");
 
     // Get all excels
     let excel_path_vec = file_filter::get_all_files(excel_dir, "xlsx", false);
 
     // Start thread to process every excel
-    let mut thread_vec = Vec::new();
+    // let mut thread_vec = Vec::new();
+    let mut sheet_name_vec: Vec<String> = Vec::new();
     for excel_file in excel_path_vec.iter() {
         let excel_path = String::from(excel_file.to_str().unwrap());
         let fbs_path = String::from(fbs_dir);
         let bytes_path = String::from(bytes_dir);
         let fbs_namespace = String::from(namespace);
-        thread_vec.push(thread::spawn(move || {
-            if let Some(table) = RawTable::new(&excel_path, &fbs_namespace) {
-                table.write_to_fbs_file(&fbs_path).unwrap();
-                table.pack_data(&bytes_path, file_identifier).unwrap();
-            }else{
-                println!("ERROR: {0}", excel_path);
+        let lua_code_dir = String::from(lua_code_dir);
+        // thread_vec.push(thread::spawn(move || {
+        //     if let Some(table) = RawTable::new(&excel_path, &fbs_namespace) {
+        //         table.write_to_fbs_file(&fbs_path).unwrap();
+        //         table.pack_data(&bytes_path, file_identifier).unwrap();
+        //         table.write_to_logic_lua_file(&lua_code_dir).unwrap();
+        //     } else {
+        //         println!("ERROR: {0}", excel_path);
+        //     }
+        // }));
+
+        if let Some(table) = RawTable::new(&excel_path, &fbs_namespace) {
+            table.write_to_fbs_file(&fbs_path).unwrap();
+            table.pack_data(&bytes_path, file_identifier).unwrap();
+            table.write_to_logic_lua_file(&lua_code_dir).unwrap();
+
+            for sheet in table.sheets.iter() {
+                sheet_name_vec.push(sheet.sheet_name.clone());
             }
-        }));
+        } else {
+            println!("ERROR: {0}", excel_path);
+        }
     }
 
-    // wait excel process
-    for child in thread_vec {
-        let _ = child.join();
+    // 生成 Mod.lua
+    let mut line_vec: Vec<String> = Vec::new();
+    for sheet_name in sheet_name_vec.into_iter() {
+        let code_str = format!(
+            "
+local {0}TableClass = require \"Game.ConfigTables.{0}TableClass\"
+{0}Table = {0}TableClass.New(\"ConfigBytes/{0}\")
+ConfigTableST:GetInstance():AddTable({0}Table)
+
+         ",
+            sheet_name
+        );
+        line_vec.push(code_str);
     }
+
+    let code = line_vec.join("\n");
+    let output_file = format!("{}Mod.lua", &lua_code_dir);
+    fs::write(output_file, &code).unwrap();
+
+    // wait excel process
+    // for child in thread_vec {
+    //     let _ = child.join();
+    // }
 }
