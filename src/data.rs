@@ -216,7 +216,7 @@ impl RawSheet {
         header_vec
     }
 
-    fn generate_logic_lua_code(&self) -> String {
+    fn generate_logic_lua_code(&self, table_root: &str) -> String {
         let mut define_code_lines: Vec<String> = Vec::new();
         for header in self.header.iter() {
             if !header.is_comment {
@@ -229,7 +229,7 @@ impl RawSheet {
 
         let table_code_str = format!(
             "
-local {0} = require \"Game.AutoGenConfig.{0}\"
+local {0} = require \"{3}.AutoGenConfig.{0}\"
 
 local {0}TableClass = BaseClass(\"{0}TableClass\", BaseConfigTableClass)
 
@@ -246,7 +246,7 @@ end
 
 return {0}TableClass
         ",
-            self.sheet_name, define_code_str, "{}"
+            self.sheet_name, define_code_str, "{}", table_root
         );
 
         table_code_str
@@ -316,12 +316,16 @@ table Single{}Data {{
         Ok(())
     }
 
-    pub fn write_to_logic_lua_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
+    pub fn write_to_logic_lua_file(
+        &self,
+        output_dir: &str,
+        table_root: &str,
+    ) -> Result<(), std::io::Error> {
         let output_file = format!("{}{}TableClass.lua", output_dir, self.sheet_name);
         if !Path::new(output_dir).is_dir() {
             fs::create_dir(output_dir)?;
         }
-        let code = self.generate_logic_lua_code();
+        let code = self.generate_logic_lua_code(table_root);
         fs::write(output_file, &code)?;
         Ok(())
     }
@@ -383,9 +387,13 @@ impl RawTable {
         Ok(())
     }
 
-    pub fn write_to_logic_lua_file(&self, output_dir: &str) -> Result<(), std::io::Error> {
+    pub fn write_to_logic_lua_file(
+        &self,
+        output_dir: &str,
+        table_root: &str,
+    ) -> Result<(), std::io::Error> {
         for sheet in self.sheets.iter() {
-            sheet.write_to_logic_lua_file(output_dir)?;
+            sheet.write_to_logic_lua_file(output_dir, table_root)?;
         }
 
         Ok(())

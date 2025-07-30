@@ -6,7 +6,12 @@ use std::path::Path;
 extern crate flatc_rust;
 
 fn _generate(output_path: &str, path_array: &[&Path], lang: &str) -> Result<(), std::io::Error> {
-    // println!("Gen Code: {}", output_path);
+    println!(
+        "xxxxxfbs2code Gen Code: {}, 111path_arry_len: {}, path_arry: {:?}",
+        output_path,
+        path_array.len(),
+        path_array
+    );
     flatc_rust::run(flatc_rust::Args {
         lang,               // `rust` is the default, but let's be explicit
         inputs: path_array, // &[Path::new("./flatbuffers/monster.fbs")],

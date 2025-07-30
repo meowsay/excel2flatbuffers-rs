@@ -70,6 +70,13 @@ fn main() -> Result<(), std::io::Error> {
                 .value_name("luacode")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("tableroot")
+                .short("tableroot")
+                .long("tableroot")
+                .value_name("tableroot")
+                .takes_value(true),
+        )
         .get_matches();
 
     // Gets a value for config if supplied by user, or defaults to "default.conf"
@@ -80,6 +87,7 @@ fn main() -> Result<(), std::io::Error> {
     let excel_dir = matches.value_of("excel").unwrap_or(""); // "./common/excels/"
     let lang_code_dir = matches.value_of("code").unwrap_or(""); // "./common/csharp_output/"
     let lua_code_dir = matches.value_of("luacode").unwrap_or("");
+    let table_root = matches.value_of("tableroot").unwrap_or("");
 
     // Create Directories
     if fbs_dir != "" {
@@ -99,7 +107,14 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     if excel_dir != "" && fbs_dir != "" && bytes_dir != "" && lang_code_dir != "" {
-        process_excel_and_fbs_things(excel_dir, fbs_dir, bytes_dir, namespace, lua_code_dir);
+        process_excel_and_fbs_things(
+            excel_dir,
+            fbs_dir,
+            bytes_dir,
+            namespace,
+            lua_code_dir,
+            table_root,
+        );
     }
 
     let now = Instant::now();
@@ -120,6 +135,7 @@ fn process_excel_and_fbs_things(
     bytes_dir: &str,
     namespace: &str,
     lua_code_dir: &str,
+    table_root: &str,
 ) {
     let file_identifier = Some("WHAT");
 
@@ -135,20 +151,13 @@ fn process_excel_and_fbs_things(
         let bytes_path = String::from(bytes_dir);
         let fbs_namespace = String::from(namespace);
         let lua_code_dir = String::from(lua_code_dir);
-        // thread_vec.push(thread::spawn(move || {
-        //     if let Some(table) = RawTable::new(&excel_path, &fbs_namespace) {
-        //         table.write_to_fbs_file(&fbs_path).unwrap();
-        //         table.pack_data(&bytes_path, file_identifier).unwrap();
-        //         table.write_to_logic_lua_file(&lua_code_dir).unwrap();
-        //     } else {
-        //         println!("ERROR: {0}", excel_path);
-        //     }
-        // }));
 
         if let Some(table) = RawTable::new(&excel_path, &fbs_namespace) {
             table.write_to_fbs_file(&fbs_path).unwrap();
             table.pack_data(&bytes_path, file_identifier).unwrap();
-            table.write_to_logic_lua_file(&lua_code_dir).unwrap();
+            table
+                .write_to_logic_lua_file(&lua_code_dir, table_root)
+                .unwrap();
 
             for sheet in table.sheets.iter() {
                 sheet_name_vec.push(sheet.sheet_name.clone());
@@ -163,12 +172,12 @@ fn process_excel_and_fbs_things(
     for sheet_name in sheet_name_vec.into_iter() {
         let code_str = format!(
             "
-local {0}TableClass = require \"Game.ConfigTables.{0}TableClass\"
+local {0}TableClass = require \"{1}.ConfigTables.{0}TableClass\"
 {0}Table = {0}TableClass.New(\"ConfigBytes/{0}\")
 ConfigTableST:GetInstance():AddTable({0}Table)
 
          ",
-            sheet_name
+            sheet_name, table_root
         );
         line_vec.push(code_str);
     }
