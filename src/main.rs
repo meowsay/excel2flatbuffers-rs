@@ -174,7 +174,7 @@ fn process_excel_and_fbs_things(
             "
 local {0}TableClass = require \"{1}.ConfigTables.{0}TableClass\"
 {0}Table = {0}TableClass.New(\"ConfigBytes/{0}\")
-ConfigTableST:GetInstance():AddTable({0}Table)
+ConfigTableLoader:AddTable({0}Table)
 
          ",
             sheet_name, table_root
